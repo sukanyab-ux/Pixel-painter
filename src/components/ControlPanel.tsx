@@ -32,8 +32,8 @@ type ControlPanelProps = {
   onUndo: () => void;
   hasImage: boolean;
   canUndo: boolean;
-  activeTool: "paint" | "eyedropper";
-  onToolChange: (tool: "paint" | "eyedropper") => void;
+  activeTool: "paint" | "eyedropper" | "eraser";
+  onToolChange: (tool: "paint" | "eyedropper" | "eraser") => void;
   imageMode: "pixel" | "outline";
   onImageModeChange: (mode: "pixel" | "outline") => void;
   theme: Theme;
@@ -145,7 +145,7 @@ const ControlPanel = ({
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Image group */}
       <div style={groupBoxStyle}>
         <span style={groupLabelStyle}>Image</span>
@@ -242,22 +242,32 @@ const ControlPanel = ({
       {/* Tools group */}
       <div style={groupBoxStyle}>
         <span style={groupLabelStyle}>Tools</span>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button
+              style={toggleBtn(activeTool === "paint")}
+              onClick={() => onToolChange("paint")}
+              aria-label="Paint tool"
+              tabIndex={0}
+            >
+              ✏️ Paint (P)
+            </button>
+            <button
+              style={toggleBtn(activeTool === "eyedropper")}
+              onClick={() => onToolChange("eyedropper")}
+              aria-label="Eyedropper tool (V)"
+              tabIndex={0}
+            >
+              👁️ Picker (V)
+            </button>
+          </div>
           <button
-            style={toggleBtn(activeTool === "paint")}
-            onClick={() => onToolChange("paint")}
-            aria-label="Paint tool"
+            style={toggleBtn(activeTool === "eraser")}
+            onClick={() => onToolChange("eraser")}
+            aria-label="Eraser tool (E)"
             tabIndex={0}
           >
-            ✏️ Paint (P)
-          </button>
-          <button
-            style={toggleBtn(activeTool === "eyedropper")}
-            onClick={() => onToolChange("eyedropper")}
-            aria-label="Eyedropper tool (V)"
-            tabIndex={0}
-          >
-            👁️ Picker (V)
+            🧹 Erase (E)
           </button>
         </div>
       </div>

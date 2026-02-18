@@ -2,18 +2,21 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import type { GridState, Stroke, StrokeDiff } from "@/lib/types";
-import { unpackColor } from "@/lib/color";
+import { unpackColor, packColor } from "@/lib/color";
+
+const WHITE = packColor(255, 255, 255, 255);
 
 type PixelCanvasProps = {
   grid: GridState;
   cellSize: number;
   showGrid: boolean;
   selectedColor: number;
-  activeTool: "paint" | "eyedropper";
+  activeTool: "paint" | "eyedropper" | "eraser";
   paintedCells: Set<number>;
   hasImage: boolean;
   brushSize: number;
   onPaint: (idx: number, color: number) => void;
+  onErase: (idx: number) => void;
   onStrokeEnd: (stroke: Stroke) => void;
   onEyedrop: (color: number) => void;
 };
@@ -28,6 +31,7 @@ const PixelCanvas = ({
   hasImage,
   brushSize,
   onPaint,
+  onErase,
   onStrokeEnd,
   onEyedrop,
 }: PixelCanvasProps) => {
@@ -135,6 +139,19 @@ const PixelCanvas = ({
     [grid.colors, selectedColor, onPaint, paintedCells]
   );
 
+  const eraseSingleCell = useCallback(
+    (idx: number) => {
+      if (strokePaintedRef.current.has(idx)) return;
+      if (!paintedCells.has(idx)) return;
+
+      const before = grid.colors[idx];
+      strokePaintedRef.current.add(idx);
+      currentStrokeRef.current.push({ idx, before, after: before });
+      onErase(idx);
+    },
+    [grid.colors, paintedCells, onErase]
+  );
+
   const paintBlock = useCallback(
     (centerX: number, centerY: number) => {
       const half = Math.floor(brushSize / 2);
@@ -143,11 +160,16 @@ const PixelCanvas = ({
           const nx = centerX + dx;
           const ny = centerY + dy;
           if (nx < 0 || nx >= grid.gridW || ny < 0 || ny >= grid.gridH) continue;
-          paintSingleCell(ny * grid.gridW + nx);
+          const cellIdx = ny * grid.gridW + nx;
+          if (activeTool === "eraser") {
+            eraseSingleCell(cellIdx);
+          } else {
+            paintSingleCell(cellIdx);
+          }
         }
       }
     },
-    [brushSize, grid.gridW, grid.gridH, paintSingleCell]
+    [brushSize, grid.gridW, grid.gridH, paintSingleCell, eraseSingleCell, activeTool]
   );
 
   const handlePointerDown = useCallback(
@@ -161,6 +183,7 @@ const PixelCanvas = ({
         onEyedrop(grid.colors[cell.idx]);
         return;
       }
+
 
       activePointerRef.current = e.pointerId;
       currentStrokeRef.current = [];
@@ -207,7 +230,7 @@ const PixelCanvas = ({
     []
   );
 
-  const cursor = activeTool === "eyedropper" ? "copy" : "crosshair";
+  const cursor = activeTool === "eyedropper" ? "copy" : activeTool === "eraser" ? "cell" : "crosshair";
 
   return (
     <canvas

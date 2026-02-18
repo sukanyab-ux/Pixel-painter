@@ -48,11 +48,12 @@ const Page = () => {
   const [exportScale, setExportScale] = useState(16);
   const [undoStack, setUndoStack] = useState<Stroke[]>([]);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [activeTool, setActiveTool] = useState<"paint" | "eyedropper">("paint");
+  const [activeTool, setActiveTool] = useState<"paint" | "eyedropper" | "eraser">("paint");
   const [paintedCells, setPaintedCells] = useState<Set<number>>(() => new Set());
   const [imageMode, setImageMode] = useState<"pixel" | "outline">("pixel");
   const [brushSize, setBrushSize] = useState(1);
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
+  const [baseGrid, setBaseGrid] = useState<Uint32Array | null>(null);
 
   const theme = themeMode === "dark" ? darkTheme : lightTheme;
   const outset = useMemo(() => makeOutset(theme), [theme]);
@@ -60,6 +61,9 @@ const Page = () => {
 
   const gridRef = useRef(grid);
   gridRef.current = grid;
+
+  const baseGridRef = useRef(baseGrid);
+  baseGridRef.current = baseGrid;
 
   const paintedCellsRef = useRef(paintedCells);
   paintedCellsRef.current = paintedCells;
@@ -84,6 +88,21 @@ const Page = () => {
     setPaintedCells((prev) => {
       const next = new Set(prev);
       next.add(idx);
+      return next;
+    });
+  }, []);
+
+  const handleErase = useCallback((idx: number) => {
+    const base = baseGridRef.current;
+    const restoreColor = base ? base[idx] : packColor(255, 255, 255, 255);
+    setGrid((prev) => {
+      const next = new Uint32Array(prev.colors);
+      next[idx] = restoreColor;
+      return { ...prev, colors: next };
+    });
+    setPaintedCells((prev) => {
+      const next = new Set(prev);
+      next.delete(idx);
       return next;
     });
   }, []);
@@ -124,6 +143,7 @@ const Page = () => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === "p" || e.key === "P") setActiveTool("paint");
       if (e.key === "v" || e.key === "V") setActiveTool("eyedropper");
+      if (e.key === "e" || e.key === "E") setActiveTool("eraser");
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -147,12 +167,14 @@ const Page = () => {
         try {
           const result = await processImage(file, w, imageModeRef.current);
           setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
+          setBaseGrid(new Uint32Array(result.colors));
           return;
         } catch {
           /* fall through to blank grid */
         }
       }
       setGrid(createBlankGrid(w, w));
+      setBaseGrid(null);
     },
     [processImage]
   );
@@ -163,6 +185,7 @@ const Page = () => {
       try {
         const result = await processImage(file, gridW, imageModeRef.current);
         setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
+        setBaseGrid(new Uint32Array(result.colors));
         setUndoStack([]);
         setPaintedCells(new Set());
       } catch {
@@ -182,6 +205,7 @@ const Page = () => {
         setUploadedFile(file);
         const result = await processImage(file, gridW, imageModeRef.current);
         setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
+        setBaseGrid(new Uint32Array(result.colors));
         setUndoStack([]);
         setPaintedCells(new Set());
       } catch {
@@ -196,6 +220,7 @@ const Page = () => {
     try {
       const result = await processImage(uploadedFile, gridW, imageModeRef.current);
       setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
+      setBaseGrid(new Uint32Array(result.colors));
       setUndoStack([]);
       setPaintedCells(new Set());
     } catch {
@@ -211,6 +236,7 @@ const Page = () => {
       try {
         const result = await processImage(file, gridW, mode);
         setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
+        setBaseGrid(new Uint32Array(result.colors));
         setUndoStack([]);
         setPaintedCells(new Set());
       } catch {
@@ -380,6 +406,7 @@ const Page = () => {
             hasImage={uploadedFile !== null}
             brushSize={brushSize}
             onPaint={handlePaint}
+            onErase={handleErase}
             onStrokeEnd={handleStrokeEnd}
             onEyedrop={handleEyedrop}
           />
