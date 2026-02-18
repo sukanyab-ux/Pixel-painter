@@ -12,6 +12,7 @@ type PixelCanvasProps = {
   activeTool: "paint" | "eyedropper";
   paintedCells: Set<number>;
   hasImage: boolean;
+  brushSize: number;
   onPaint: (idx: number, color: number) => void;
   onStrokeEnd: (stroke: Stroke) => void;
   onEyedrop: (color: number) => void;
@@ -25,6 +26,7 @@ const PixelCanvas = ({
   activeTool,
   paintedCells,
   hasImage,
+  brushSize,
   onPaint,
   onStrokeEnd,
   onEyedrop,
@@ -120,7 +122,7 @@ const PixelCanvas = ({
     [cellSize, grid.gridW, grid.gridH]
   );
 
-  const paintCell = useCallback(
+  const paintSingleCell = useCallback(
     (idx: number) => {
       if (strokePaintedRef.current.has(idx)) return;
       const before = grid.colors[idx];
@@ -131,6 +133,21 @@ const PixelCanvas = ({
       onPaint(idx, selectedColor);
     },
     [grid.colors, selectedColor, onPaint, paintedCells]
+  );
+
+  const paintBlock = useCallback(
+    (centerX: number, centerY: number) => {
+      const half = Math.floor(brushSize / 2);
+      for (let dy = -half; dy < brushSize - half; dy++) {
+        for (let dx = -half; dx < brushSize - half; dx++) {
+          const nx = centerX + dx;
+          const ny = centerY + dy;
+          if (nx < 0 || nx >= grid.gridW || ny < 0 || ny >= grid.gridH) continue;
+          paintSingleCell(ny * grid.gridW + nx);
+        }
+      }
+    },
+    [brushSize, grid.gridW, grid.gridH, paintSingleCell]
   );
 
   const handlePointerDown = useCallback(
@@ -152,18 +169,18 @@ const PixelCanvas = ({
       const canvas = canvasRef.current;
       if (canvas) canvas.setPointerCapture(e.pointerId);
 
-      paintCell(cell.idx);
+      paintBlock(cell.x, cell.y);
     },
-    [getCellFromEvent, paintCell, activeTool, onEyedrop, grid.colors]
+    [getCellFromEvent, paintBlock, activeTool, onEyedrop, grid.colors]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (activePointerRef.current !== e.pointerId) return;
       const cell = getCellFromEvent(e);
-      if (cell) paintCell(cell.idx);
+      if (cell) paintBlock(cell.x, cell.y);
     },
-    [getCellFromEvent, paintCell]
+    [getCellFromEvent, paintBlock]
   );
 
   const handlePointerUp = useCallback(

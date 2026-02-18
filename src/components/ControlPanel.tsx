@@ -1,6 +1,15 @@
 "use client";
 
 import { useRef } from "react";
+import type { Theme } from "@/lib/theme";
+
+const SAMPLE_IMAGES = [
+  { src: "/samples/groww-logo.png", label: "Logo" },
+  { src: "/samples/no-face.png", label: "No Face" },
+  { src: "/samples/jiji-cat.png", label: "Jiji" },
+  { src: "/samples/wave.png", label: "Wave" },
+  { src: "/samples/last-supper.png", label: "Painting" },
+];
 
 type ControlPanelProps = {
   gridW: number;
@@ -9,9 +18,12 @@ type ControlPanelProps = {
   onCellSizeChange: (size: number) => void;
   showGrid: boolean;
   onToggleGrid: () => void;
+  brushSize: number;
+  onBrushSizeChange: (size: number) => void;
   exportScale: number;
   onExportScaleChange: (scale: number) => void;
   onUploadImage: (file: File) => void;
+  onSelectSampleImage: (url: string) => void;
   onRePixelate: () => void;
   onExportPng: () => void;
   onUndo: () => void;
@@ -19,68 +31,12 @@ type ControlPanelProps = {
   canUndo: boolean;
   activeTool: "paint" | "eyedropper";
   onToolChange: (tool: "paint" | "eyedropper") => void;
+  imageMode: "pixel" | "outline";
+  onImageModeChange: (mode: "pixel" | "outline") => void;
+  theme: Theme;
 };
 
 const EXPORT_SCALES = [8, 12, 16, 24, 32];
-
-const win95Outset: React.CSSProperties = {
-  borderTop: "2px solid #fff",
-  borderLeft: "2px solid #fff",
-  borderBottom: "2px solid #404040",
-  borderRight: "2px solid #404040",
-};
-
-const win95Inset: React.CSSProperties = {
-  borderTop: "1px solid #808080",
-  borderLeft: "1px solid #808080",
-  borderBottom: "1px solid #fff",
-  borderRight: "1px solid #fff",
-};
-
-const btnStyle: React.CSSProperties = {
-  padding: "3px 12px",
-  backgroundColor: "#c0c0c0",
-  ...win95Outset,
-  cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 400,
-  textAlign: "center",
-  color: "#000",
-  minWidth: 0,
-};
-
-const groupBoxStyle: React.CSSProperties = {
-  border: "1px solid #808080",
-  padding: "10px 8px 8px",
-  position: "relative",
-  marginTop: 6,
-};
-
-const groupLabelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: -7,
-  left: 8,
-  backgroundColor: "#c0c0c0",
-  padding: "0 4px",
-  fontSize: 11,
-  color: "#000",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 3,
-  fontSize: 11,
-  color: "#000",
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: "2px 4px",
-  backgroundColor: "#fff",
-  color: "#000",
-  fontSize: 11,
-  ...win95Inset,
-};
 
 const ControlPanel = ({
   gridW,
@@ -89,9 +45,12 @@ const ControlPanel = ({
   onCellSizeChange,
   showGrid,
   onToggleGrid,
+  brushSize,
+  onBrushSizeChange,
   exportScale,
   onExportScaleChange,
   onUploadImage,
+  onSelectSampleImage,
   onRePixelate,
   onExportPng,
   onUndo,
@@ -99,6 +58,9 @@ const ControlPanel = ({
   canUndo,
   activeTool,
   onToolChange,
+  imageMode,
+  onImageModeChange,
+  theme: t,
 }: ControlPanelProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,45 +70,191 @@ const ControlPanel = ({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const outset: React.CSSProperties = {
+    borderTop: `2px solid ${t.borderLight}`,
+    borderLeft: `2px solid ${t.borderLight}`,
+    borderBottom: `2px solid ${t.borderDark}`,
+    borderRight: `2px solid ${t.borderDark}`,
+  };
+
+  const insetBorder: React.CSSProperties = {
+    borderTop: `1px solid ${t.borderMid}`,
+    borderLeft: `1px solid ${t.borderMid}`,
+    borderBottom: `1px solid ${t.borderLight}`,
+    borderRight: `1px solid ${t.borderLight}`,
+  };
+
+  const btnStyle: React.CSSProperties = {
+    padding: "3px 12px",
+    backgroundColor: t.bg,
+    ...outset,
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 400,
+    textAlign: "center",
+    color: t.text,
+    minWidth: 0,
+  };
+
+  const groupBoxStyle: React.CSSProperties = {
+    border: `1px solid ${t.groupBorder}`,
+    padding: "10px 8px 8px",
+    position: "relative",
+    marginTop: 0,
+  };
+
+  const groupLabelStyle: React.CSSProperties = {
+    position: "absolute",
+    top: -7,
+    left: 8,
+    backgroundColor: t.groupLabelBg,
+    padding: "0 4px",
+    fontSize: 14,
+    color: t.text,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    fontSize: 14,
+    color: t.text,
+  };
+
+  const selectStyle: React.CSSProperties = {
+    padding: "2px 4px",
+    backgroundColor: t.selectBg,
+    color: t.text,
+    fontSize: 14,
+    ...insetBorder,
+  };
+
+  const toggleBtn = (active: boolean): React.CSSProperties => ({
+    ...btnStyle,
+    flex: 1,
+    whiteSpace: "nowrap",
+    padding: "3px 4px",
+    borderTop: active ? `2px solid ${t.borderDark}` : `2px solid ${t.borderLight}`,
+    borderLeft: active ? `2px solid ${t.borderDark}` : `2px solid ${t.borderLight}`,
+    borderBottom: active ? `2px solid ${t.borderLight}` : `2px solid ${t.borderDark}`,
+    borderRight: active ? `2px solid ${t.borderLight}` : `2px solid ${t.borderDark}`,
+    backgroundColor: active ? t.bgActive : t.bg,
+  });
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Image group */}
+      <div style={groupBoxStyle}>
+        <span style={groupLabelStyle}>Image</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            style={{ display: "none" }}
+            aria-label="Upload image file"
+          />
+          <button
+            style={btnStyle}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Upload image"
+            tabIndex={0}
+          >
+            Upload Image...
+          </button>
+
+          {/* Sample images rail */}
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              overflowX: "auto",
+              paddingBottom: 2,
+            }}
+          >
+            {SAMPLE_IMAGES.map((img) => (
+              <button
+                key={img.src}
+                onClick={() => onSelectSampleImage(img.src)}
+                aria-label={`Load sample: ${img.label}`}
+                tabIndex={0}
+                style={{
+                  width: 36,
+                  height: 36,
+                  flexShrink: 0,
+                  padding: 0,
+                  cursor: "pointer",
+                  borderTop: `1px solid ${t.borderMid}`,
+                  borderLeft: `1px solid ${t.borderMid}`,
+                  borderBottom: `1px solid ${t.borderLight}`,
+                  borderRight: `1px solid ${t.borderLight}`,
+                  borderRadius: 0,
+                  overflow: "hidden",
+                  backgroundColor: t.bg,
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img.src}
+                  alt={img.label}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: 4 }}>
+            <button
+              style={toggleBtn(imageMode === "pixel")}
+              onClick={() => onImageModeChange("pixel")}
+              aria-label="Pixel mode"
+              tabIndex={0}
+            >
+              Pixel
+            </button>
+            <button
+              style={toggleBtn(imageMode === "outline")}
+              onClick={() => onImageModeChange("outline")}
+              aria-label="Outline mode"
+              tabIndex={0}
+            >
+              Outline
+            </button>
+          </div>
+
+          {hasImage && (
+            <button
+              style={btnStyle}
+              onClick={onRePixelate}
+              aria-label="Re-pixelate uploaded image"
+              tabIndex={0}
+            >
+              Re-pixelate
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Tools group */}
       <div style={groupBoxStyle}>
         <span style={groupLabelStyle}>Tools</span>
         <div style={{ display: "flex", gap: 4 }}>
           <button
-            style={{
-              ...btnStyle,
-              flex: 1,
-              whiteSpace: "nowrap",
-              borderTop: activeTool === "paint" ? "2px solid #404040" : "2px solid #fff",
-              borderLeft: activeTool === "paint" ? "2px solid #404040" : "2px solid #fff",
-              borderBottom: activeTool === "paint" ? "2px solid #fff" : "2px solid #404040",
-              borderRight: activeTool === "paint" ? "2px solid #fff" : "2px solid #404040",
-              backgroundColor: activeTool === "paint" ? "#a0a0a0" : "#c0c0c0",
-            }}
+            style={toggleBtn(activeTool === "paint")}
             onClick={() => onToolChange("paint")}
             aria-label="Paint tool"
             tabIndex={0}
           >
-            &#9999;&#65039; Paint (P)
+            ✏️ Paint (P)
           </button>
           <button
-            style={{
-              ...btnStyle,
-              flex: 1,
-              whiteSpace: "nowrap",
-              borderTop: activeTool === "eyedropper" ? "2px solid #404040" : "2px solid #fff",
-              borderLeft: activeTool === "eyedropper" ? "2px solid #404040" : "2px solid #fff",
-              borderBottom: activeTool === "eyedropper" ? "2px solid #fff" : "2px solid #404040",
-              borderRight: activeTool === "eyedropper" ? "2px solid #fff" : "2px solid #404040",
-              backgroundColor: activeTool === "eyedropper" ? "#a0a0a0" : "#c0c0c0",
-            }}
+            style={toggleBtn(activeTool === "eyedropper")}
             onClick={() => onToolChange("eyedropper")}
             aria-label="Eyedropper tool (V)"
             tabIndex={0}
           >
-            &#128065; Picker (V)
+            👁️ Picker (V)
           </button>
         </div>
       </div>
@@ -181,14 +289,27 @@ const ControlPanel = ({
             />
           </label>
 
+          <label style={labelStyle}>
+            Brush: {brushSize}px
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={1}
+              value={brushSize}
+              onChange={(e) => onBrushSizeChange(Number(e.target.value))}
+              aria-label="Brush size"
+            />
+          </label>
+
           <label
             style={{
               display: "flex",
               alignItems: "center",
               gap: 6,
-              fontSize: 11,
+              fontSize: 14,
               cursor: "pointer",
-              color: "#000",
+              color: t.text,
             }}
           >
             <input
@@ -212,40 +333,6 @@ const ControlPanel = ({
           >
             Undo (Ctrl+Z)
           </button>
-        </div>
-      </div>
-
-      {/* Image group */}
-      <div style={groupBoxStyle}>
-        <span style={groupLabelStyle}>Image</span>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            style={{ display: "none" }}
-            aria-label="Upload image file"
-          />
-          <button
-            style={btnStyle}
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Upload image"
-            tabIndex={0}
-          >
-            Upload Image...
-          </button>
-
-          {hasImage && (
-            <button
-              style={btnStyle}
-              onClick={onRePixelate}
-              aria-label="Re-pixelate uploaded image"
-              tabIndex={0}
-            >
-              Re-pixelate
-            </button>
-          )}
         </div>
       </div>
 
@@ -281,14 +368,14 @@ const ControlPanel = ({
       </div>
 
       {/* Instructions group */}
-      <div style={{ ...groupBoxStyle, marginTop: 10 }}>
+      <div style={groupBoxStyle}>
         <span style={groupLabelStyle}>Instructions</span>
         <ol
           style={{
             margin: 0,
             paddingLeft: 16,
-            fontSize: 11,
-            color: "#000",
+            fontSize: 14,
+            color: t.text,
             lineHeight: 1.6,
             listStyleType: "decimal",
           }}

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { GridState, Stroke } from "@/lib/types";
 import { packColor } from "@/lib/color";
 import { PALETTE_COLORS } from "@/lib/palette";
-import { pixelateImageToGrid } from "@/lib/pixelate";
+import { pixelateImageToGrid, outlineImageToGrid } from "@/lib/pixelate";
 import { exportGridAsPNG, downloadBlob } from "@/lib/exportPng";
+import { lightTheme, darkTheme } from "@/lib/theme";
+import type { Theme } from "@/lib/theme";
 import PixelCanvas from "@/components/PixelCanvas";
 import ColorPalette from "@/components/ColorPalette";
 import ControlPanel from "@/components/ControlPanel";
@@ -21,19 +23,19 @@ const createBlankGrid = (w: number, h: number): GridState => {
   return { gridW: w, gridH: h, colors };
 };
 
-const win95Outset: React.CSSProperties = {
-  borderTop: "2px solid #fff",
-  borderLeft: "2px solid #fff",
-  borderBottom: "2px solid #404040",
-  borderRight: "2px solid #404040",
-};
+const makeOutset = (t: Theme): React.CSSProperties => ({
+  borderTop: `2px solid ${t.borderLight}`,
+  borderLeft: `2px solid ${t.borderLight}`,
+  borderBottom: `2px solid ${t.borderDark}`,
+  borderRight: `2px solid ${t.borderDark}`,
+});
 
-const win95Inset: React.CSSProperties = {
-  borderTop: "2px solid #808080",
-  borderLeft: "2px solid #808080",
-  borderBottom: "2px solid #fff",
-  borderRight: "2px solid #fff",
-};
+const makeInset = (t: Theme): React.CSSProperties => ({
+  borderTop: `2px solid ${t.borderMid}`,
+  borderLeft: `2px solid ${t.borderMid}`,
+  borderBottom: `2px solid ${t.borderLight}`,
+  borderRight: `2px solid ${t.borderLight}`,
+});
 
 const Page = () => {
   const [grid, setGrid] = useState<GridState>(() =>
@@ -48,6 +50,13 @@ const Page = () => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [activeTool, setActiveTool] = useState<"paint" | "eyedropper">("paint");
   const [paintedCells, setPaintedCells] = useState<Set<number>>(() => new Set());
+  const [imageMode, setImageMode] = useState<"pixel" | "outline">("pixel");
+  const [brushSize, setBrushSize] = useState(1);
+  const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
+
+  const theme = themeMode === "dark" ? darkTheme : lightTheme;
+  const outset = useMemo(() => makeOutset(theme), [theme]);
+  const inset = useMemo(() => makeInset(theme), [theme]);
 
   const gridRef = useRef(grid);
   gridRef.current = grid;
@@ -57,6 +66,9 @@ const Page = () => {
 
   const uploadedFileRef = useRef(uploadedFile);
   uploadedFileRef.current = uploadedFile;
+
+  const imageModeRef = useRef(imageMode);
+  imageModeRef.current = imageMode;
 
   const handleEyedrop = useCallback((color: number) => {
     setSelectedColor(color);
@@ -117,15 +129,23 @@ const Page = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndo]);
 
+  const processImage = useCallback(
+    (file: File, w: number, mode: "pixel" | "outline") => {
+      return mode === "outline" ? outlineImageToGrid(file, w) : pixelateImageToGrid(file, w);
+    },
+    []
+  );
+
   const handleGridWChange = useCallback(
     async (w: number) => {
       setGridW(w);
+      setBrushSize(w <= 32 ? 1 : w <= 64 ? 2 : 3);
       setUndoStack([]);
       setPaintedCells(new Set());
       const file = uploadedFileRef.current;
       if (file) {
         try {
-          const result = await pixelateImageToGrid(file, w);
+          const result = await processImage(file, w, imageModeRef.current);
           setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
           return;
         } catch {
@@ -134,14 +154,14 @@ const Page = () => {
       }
       setGrid(createBlankGrid(w, w));
     },
-    []
+    [processImage]
   );
 
   const handleUploadImage = useCallback(
     async (file: File) => {
       setUploadedFile(file);
       try {
-        const result = await pixelateImageToGrid(file, gridW);
+        const result = await processImage(file, gridW, imageModeRef.current);
         setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
         setUndoStack([]);
         setPaintedCells(new Set());
@@ -149,20 +169,56 @@ const Page = () => {
         setUploadedFile(null);
       }
     },
-    [gridW]
+    [gridW, processImage]
+  );
+
+  const handleSelectSampleImage = useCallback(
+    async (url: string) => {
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const name = url.split("/").pop() || "sample.png";
+        const file = new File([blob], name, { type: blob.type });
+        setUploadedFile(file);
+        const result = await processImage(file, gridW, imageModeRef.current);
+        setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
+        setUndoStack([]);
+        setPaintedCells(new Set());
+      } catch {
+        /* noop */
+      }
+    },
+    [gridW, processImage]
   );
 
   const handleRePixelate = useCallback(async () => {
     if (!uploadedFile) return;
     try {
-      const result = await pixelateImageToGrid(uploadedFile, gridW);
+      const result = await processImage(uploadedFile, gridW, imageModeRef.current);
       setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
       setUndoStack([]);
       setPaintedCells(new Set());
     } catch {
       /* noop */
     }
-  }, [uploadedFile, gridW]);
+  }, [uploadedFile, gridW, processImage]);
+
+  const handleImageModeChange = useCallback(
+    async (mode: "pixel" | "outline") => {
+      setImageMode(mode);
+      const file = uploadedFileRef.current;
+      if (!file) return;
+      try {
+        const result = await processImage(file, gridW, mode);
+        setGrid({ gridW: result.gridW, gridH: result.gridH, colors: result.colors });
+        setUndoStack([]);
+        setPaintedCells(new Set());
+      } catch {
+        /* noop */
+      }
+    },
+    [gridW, processImage]
+  );
 
   const handleExportPng = useCallback(async () => {
     const g = gridRef.current;
@@ -188,14 +244,14 @@ const Page = () => {
         flexDirection: "column",
         width: "100vw",
         height: "100vh",
-        backgroundColor: "#c0c0c0",
-        ...win95Outset,
+        backgroundColor: theme.bg,
+        ...outset,
       }}
     >
       {/* Title bar */}
       <div
         style={{
-          background: "linear-gradient(90deg, #000080, #1084d0)",
+          background: theme.titleBarGradient,
           padding: "3px 4px",
           display: "flex",
           alignItems: "center",
@@ -234,9 +290,9 @@ const Page = () => {
               style={{
                 width: 16,
                 height: 14,
-                backgroundColor: "#c0c0c0",
+                backgroundColor: theme.titleBtnBg,
                 border: "none",
-                ...win95Outset,
+                ...outset,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -245,7 +301,7 @@ const Page = () => {
                 cursor: "pointer",
                 padding: 0,
                 lineHeight: 1,
-                color: "#000",
+                color: theme.text,
               }}
             >
               {label}
@@ -265,12 +321,12 @@ const Page = () => {
         {/* Left sidebar - controls */}
         <aside
           style={{
-            width: 196,
+            width: 220,
             padding: 6,
             display: "flex",
             flexDirection: "column",
             gap: 4,
-            borderRight: "1px solid #808080",
+            borderRight: `1px solid ${theme.borderMid}`,
             overflowY: "auto",
             flexShrink: 0,
           }}
@@ -282,9 +338,12 @@ const Page = () => {
             onCellSizeChange={setCellSize}
             showGrid={showGrid}
             onToggleGrid={() => setShowGrid((p) => !p)}
+            brushSize={brushSize}
+            onBrushSizeChange={setBrushSize}
             exportScale={exportScale}
             onExportScaleChange={setExportScale}
             onUploadImage={handleUploadImage}
+            onSelectSampleImage={handleSelectSampleImage}
             onRePixelate={handleRePixelate}
             onExportPng={handleExportPng}
             onUndo={handleUndo}
@@ -292,6 +351,9 @@ const Page = () => {
             canUndo={undoStack.length > 0}
             activeTool={activeTool}
             onToolChange={setActiveTool}
+            imageMode={imageMode}
+            onImageModeChange={handleImageModeChange}
+            theme={theme}
           />
         </aside>
 
@@ -304,8 +366,8 @@ const Page = () => {
             justifyContent: "center",
             overflow: "auto",
             padding: 8,
-            backgroundColor: "#808080",
-            ...win95Inset,
+            backgroundColor: theme.canvasBg,
+            ...inset,
           }}
         >
           <PixelCanvas
@@ -316,25 +378,31 @@ const Page = () => {
             activeTool={activeTool}
             paintedCells={paintedCells}
             hasImage={uploadedFile !== null}
+            brushSize={brushSize}
             onPaint={handlePaint}
             onStrokeEnd={handleStrokeEnd}
             onEyedrop={handleEyedrop}
           />
         </main>
-      </div>
 
-      {/* Bottom color palette bar */}
-      <div
-        style={{
-          borderTop: "1px solid #808080",
-          padding: "4px 6px",
-          backgroundColor: "#c0c0c0",
-        }}
-      >
-        <ColorPalette
-          selectedColor={selectedColor}
-          onSelectColor={setSelectedColor}
-        />
+        {/* Right sidebar - color palette */}
+        <aside
+          style={{
+            width: 190,
+            padding: 8,
+            borderLeft: `1px solid ${theme.borderMid}`,
+            overflowY: "auto",
+            flexShrink: 0,
+          }}
+        >
+          <ColorPalette
+            selectedColor={selectedColor}
+            onSelectColor={setSelectedColor}
+            theme={theme}
+            themeMode={themeMode}
+            onThemeModeChange={setThemeMode}
+          />
+        </aside>
       </div>
 
       {/* Status bar */}
@@ -343,29 +411,29 @@ const Page = () => {
           display: "flex",
           gap: 2,
           padding: "2px 4px",
-          borderTop: "1px solid #fff",
+          borderTop: `1px solid ${theme.borderLight}`,
         }}
       >
         <div
           style={{
             flex: 1,
-            ...win95Inset,
+            ...inset,
             borderWidth: 1,
             padding: "2px 6px",
-            fontSize: 11,
-            color: "#000",
+            fontSize: 14,
+            color: theme.text,
           }}
         >
-          {grid.gridW} &times; {grid.gridH} pixels
+          {grid.gridW} &times; {grid.gridH} pixels &middot; Brush: {brushSize}px
         </div>
         <div
           style={{
             width: 140,
-            ...win95Inset,
+            ...inset,
             borderWidth: 1,
             padding: "2px 6px",
-            fontSize: 11,
-            color: "#000",
+            fontSize: 14,
+            color: theme.text,
             textAlign: "center",
           }}
         >
