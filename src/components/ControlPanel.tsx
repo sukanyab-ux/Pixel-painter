@@ -9,6 +9,9 @@ const SAMPLE_IMAGES = [
   { src: "/samples/jiji-cat.png", label: "Jiji" },
   { src: "/samples/wave.png", label: "Wave" },
   { src: "/samples/last-supper.png", label: "Painting" },
+  { src: "/samples/calcifer.png", label: "Calcifer" },
+  { src: "/samples/pokeball.png", label: "Pokeball" },
+  { src: "/samples/pikachu.png", label: "Pikachu" },
 ];
 
 type ControlPanelProps = {
